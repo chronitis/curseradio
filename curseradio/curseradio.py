@@ -19,8 +19,6 @@ import subprocess
 import lxml.etree
 import requests
 
-ROOT = "http://opml.radiotime.com/"
-
 
 class OPMLNode:
     """

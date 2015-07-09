@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+
+import curses
+from curseradio import ROOT, OPMLBrowser
+
+curses.wrapper(lambda s: OPMLBrowser(s, ROOT))
