@@ -14,7 +14,7 @@ Key(s) | Command
 <kbd>↑</kbd>, <kbd>↓</kbd> | navigate
 <kbd>PgUp</kbd>, <kbd>PgDn</kbd> | navigate quickly
 <kbd>Home</kbd>, <kbd>End</kbd> | to top/bottom
-<kbd>Enter<kbd> | open/close folders, play stream
+<kbd>Enter</kbd> | open/close folders, play stream
 <kbd>k</kbd> | stop playing stream
 <kbd>q</kbd> | quit
 <kbd>f</kbd> | toggle favourite
