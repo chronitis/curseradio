@@ -11,5 +11,5 @@ setup(name="curseradio",
       url="https://github.com/chronitis/curseradio",
       packages=["curseradio"],
       license="MIT",
-      requires=["lxml", "requests"],
+      requires=["lxml", "requests", "pyxdg"],
       scripts=["scripts/curseradio"])
