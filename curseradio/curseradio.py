@@ -7,17 +7,23 @@ tunein directory at http://opml.radiotime.com/).
 Uses `mpv` to play streams. Works for any stream which works when invoked
 as `mpv <stream-location>`.
 
+A favourites file (also stored as OPML) is written to
+$XDG_DATA_HOME/curseradio/favourites.opml
+
 Controls:
  * UP, DOWN, PAGEUP, PAGEDOWN, HOME, END - navigate the source list
  * ENTER - expand/contract items, play streams
  * q - exit
  * k - kill the current stream
+ * f - mark as favourite
 """
 
 import curses
 import subprocess
 import lxml.etree
 import requests
+import pathlib
+import xdg.BaseDirectory
 
 
 class OPMLNode:
@@ -25,14 +31,15 @@ class OPMLNode:
     Represents an OPML <outline> element. Only instantiate subclasses.
     """
     @classmethod
-    def from_xml(cls, url):
+    def from_xml(cls, url, text="", attr=None):
         """
         Load an OPML XML file. Returns a fake parent OPMLOutline node with
         children set to all the outlines contained in the file. (The header
         is currently discarded).
         """
+        if attr is None: attr = {}
         tree = lxml.etree.parse(url)
-        result = OPMLOutline("", {})
+        result = cls(text=text, attr=attr)
         result.children = [OPMLNode.from_element(o)
                            for o in tree.xpath('/opml/body/outline')]
         return result
@@ -67,7 +74,7 @@ class OPMLNode:
 
     def __init__(self, text, attr):
         self.text = text
-        self.attrs = attrs
+        self.attr = attr
 
     def render(self, depth):
         """
@@ -93,6 +100,21 @@ class OPMLNode:
         """
         result.append((self, depth))
         return result
+
+    def to_element(self):
+        """
+        Return the object and its children as an <outline> element.
+        """
+        return lxml.etree.Element("outline", attrib=self.attr)
+
+    def to_xml(self):
+        """
+        Return the element wrapped in an <opml> toplevel element.
+        """
+        opml = lxml.etree.Element("opml")
+        body = lxml.etree.SubElement(opml, "body")
+        body.append(self.to_element())
+        return opml
 
 
 class OPMLAudio(OPMLNode):
@@ -154,6 +176,12 @@ class OPMLOutline(OPMLNode):
         return ("{} {}".format("+" if self.collapsed else "-", self.text),
                 "", "", "")
 
+    def to_element(self):
+        elem = super().to_element()
+        for c in self.children:
+            elem.append(c.to_element())
+        return elem
+
 
 class OPMLOutlineLink(OPMLOutline):
     """
@@ -161,19 +189,46 @@ class OPMLOutlineLink(OPMLOutline):
     parsed as OPML and all top-level outlines added as children of this node.
     """
     def __init__(self, text, attr):
-        super(OPMLOutlineLink, self).__init__(text, attr)
+        super().__init__(text, attr)
         self.url = attr['URL']
         self.ready = False
 
     def activate(self):
         if not self.ready:
             yield "Loading {}".format(self.url)
-            fakeroot = self.from_xml(self.url)
+            fakeroot = OPMLOutline.from_xml(self.url)
             self.children = fakeroot.children
             self.ready = True
             yield "Loading... done"
         self.collapsed = not self.collapsed
 
+class OPMLFavourites(OPMLOutline):
+    """
+    A special outline subclass representing a locally stored favourites list
+    which tracks whether it has been altered so it can be saved if necessary.
+    """
+    def __init__(self, text, attr):
+        super().__init__("Favourites", {})
+        self.dirty = False
+
+    def toggle(self, other):
+        self.dirty = True
+        if other in self.children:
+            self.children.remove(other)
+        else:
+            self.children.append(other)
+
+    def to_xml(self):
+        """
+        For the favourites object, we skip generating an extra <outline>
+        (corresponding to this object), and just place the children (ie,
+        the actual favourite items) as the toplevel.
+        """
+        opml = lxml.etree.Element("opml")
+        body = lxml.etree.SubElement(opml, "body")
+        for c in self.children:
+            body.append(c.to_element())
+        return opml
 
 class OPMLBrowser:
     """
@@ -185,8 +240,10 @@ class OPMLBrowser:
         This is intended to be invoked using curses.wrapper. The first
         argument is the curses window and the second the OPML root URL.
         """
-        self.root = OPMLNode.from_xml(root)
+        self.root = OPMLOutline.from_xml(root)
         self.root.collapsed = False
+        self.favourites = self.load_favourites()
+        self.root.children.insert(0, self.favourites)
         self.screen = screen
         self.selected = self.root
         self.cursor = 0
@@ -198,6 +255,20 @@ class OPMLBrowser:
 
         self.display()
         self.interact()
+
+    def load_favourites(self):
+        for path in xdg.BaseDirectory.load_data_paths("curseradio"):
+            opmlpath = pathlib.Path(path, "favourites.opml")
+            if opmlpath.exists():
+                return OPMLFavourites.from_xml(str(opmlpath))
+        return OPMLFavourites("", {})
+
+    def save_favourites(self):
+        path = xdg.BaseDirectory.save_data_path("curseradio")
+        if self.favourites.dirty:
+            opmlpath = pathlib.Path(path, "favourites.opml")
+            opml = lxml.etree.ElementTree(self.favourites.to_xml())
+            opml.write(str(opmlpath))
 
     def display(self, msg=None):
         """
@@ -291,11 +362,16 @@ class OPMLBrowser:
                 if self.child is not None:
                     self.child.terminate()
                     self.child.wait()
+                self.save_favourites()
                 return
             elif ch == ord('k'):
                 if self.child is not None:
                     self.child.terminate()
                     self.child.wait()
+            elif ch == ord('f'):
+                self.favourites.toggle(self.selected)
+                self.flat = self.root.flatten([])
+                self.move(rel=0)
 
             if self.child is not None:
                 if self.child.poll() is not None:
