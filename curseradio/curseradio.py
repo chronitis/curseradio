@@ -30,6 +30,7 @@ import re
 
 CONFIG_DEFAULT = {
     'opml': {'root': "http://opml.radiotime.com/"},
+    'playback': {'command': '/usr/bin/mpv'},
     'interface': {'keymap': 'default'},
     'keymap.default': {
         'up': 'KEY_UP',
@@ -163,7 +164,7 @@ class OPMLAudio(OPMLNode):
         yield "Fetching playlist"
         r = requests.get(self.url)
         playlist = r.text.split("\n")[0]
-        yield ["mpv", playlist]
+        yield [playlist]
 
     def render(self):
         return (self.text, self.secondary,
@@ -400,7 +401,8 @@ class OPMLBrowser:
                             self.child.terminate()
                             self.child.wait()
 
-                        self.child = subprocess.Popen(msg, stdout=subprocess.DEVNULL,
+                        command = [self.config['playback']['command']] + msg
+                        self.child = subprocess.Popen(command, stdout=subprocess.DEVNULL,
                                                       stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
                         self.status = "Playing {}".format(self.selected.text)
 
