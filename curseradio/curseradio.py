@@ -24,6 +24,26 @@ import lxml.etree
 import requests
 import pathlib
 import xdg.BaseDirectory
+import configparser
+import re
+
+
+CONFIG_DEFAULT = {
+    'opml': {'root': "http://opml.radiotime.com/"},
+    'interface': {'keymap': 'default'},
+    'keymap.default': {
+        'up': 'KEY_UP',
+        'down': 'KEY_DOWN',
+        'start': 'KEY_HOME',
+        'end': 'KEY_END',
+        'pageup': 'KEY_PPAGE',
+        'pagedown': 'KEY_NPAGE',
+        'enter': 'KEY_ENTER',
+        'stop': 'k',
+        'exit': 'q',
+        'favourite': 'f'
+    }
+}
 
 
 class OPMLNode:
@@ -235,12 +255,14 @@ class OPMLBrowser:
     Curses browser for an OPML tree. Includes simple keyboard navigation
     and launching child commands based on OPML leaf nodes.
     """
-    def __init__(self, screen, root):
+    def __init__(self, screen):
         """
         This is intended to be invoked using curses.wrapper. The first
         argument is the curses window and the second the OPML root URL.
         """
-        self.root = OPMLOutline.from_xml(root)
+        self.config = self.load_config()
+        self.keymap = self.get_keymap()
+        self.root = OPMLOutline.from_xml(self.config['opml']['root'])
         self.root.collapsed = False
         self.favourites = self.load_favourites()
         self.root.children.insert(0, self.favourites)
@@ -269,6 +291,32 @@ class OPMLBrowser:
             opmlpath = pathlib.Path(path, "favourites.opml")
             opml = lxml.etree.ElementTree(self.favourites.to_xml())
             opml.write(str(opmlpath))
+
+    def load_config(self):
+        config = configparser.ConfigParser(strict=True)
+        config.read_dict(CONFIG_DEFAULT)
+        for path in xdg.BaseDirectory.load_config_paths("curseradio"):
+            configpath = pathlib.Path(path, "curseradio.cfg")
+            if configpath.exists():
+                config.read(str(configpath))
+        return config
+
+    def get_keymap(self):
+        keymap = {}
+        chosen = self.config['interface']['keymap']
+        section = 'keymap.{}'.format(chosen)
+        if self.config.has_section(section):
+            keysrc = self.config[section]
+        else:
+            keysrc = self.config['keymap.default']
+        for key in ('up', 'down', 'start', 'end', 'pageup', 'pagedown',
+                    'enter', 'stop', 'exit', 'favourite'):
+            value = keysrc.get(key, self.config['keymap.default'][key])
+            if value.startswith('KEY_'):
+                keymap[key] = getattr(curses, value)
+            else:
+                keymap[key] = ord(value)
+        return keymap
 
     def display(self, msg=None):
         """
@@ -329,21 +377,21 @@ class OPMLBrowser:
         """
         while True:
             ch = self.screen.getch()
-            if ch == curses.KEY_UP:
-                self.move(rel=-1)
-            elif ch == curses.KEY_RESIZE:
+            if ch == curses.KEY_RESIZE:
                 self.maxy, self.maxx = self.screen.getmaxyx()
-            elif ch == curses.KEY_DOWN:
+            elif ch == self.keymap['up']:
+                self.move(rel=-1)
+            elif ch == self.keymap['down']:
                 self.move(rel=1)
-            elif ch == curses.KEY_HOME:
+            elif ch == self.keymap['start']:
                 self.move(to="start")
-            elif ch == curses.KEY_END:
+            elif ch == self.keymap['end']:
                 self.move(to="end")
-            elif ch == curses.KEY_PPAGE:  # page up
+            elif ch == self.keymap['pageup']:  # page up
                 self.move(rel=-self.maxy)
-            elif ch == curses.KEY_NPAGE:  # page down
+            elif ch == self.keymap['pagedown']:  # page down
                 self.move(rel=self.maxy)
-            elif ch == curses.KEY_ENTER or ch == ord('\n'):
+            elif ch == self.keymap['enter'] or ch == ord('\n'):
                 for msg in self.selected.activate():
                     if isinstance(msg, str):
                         self.display(msg=msg)
@@ -358,17 +406,17 @@ class OPMLBrowser:
 
                 self.flat = self.root.flatten([])
                 self.move(rel=0)
-            elif ch == ord('q'):
+            elif ch == self.keymap['exit']:
                 if self.child is not None:
                     self.child.terminate()
                     self.child.wait()
                 self.save_favourites()
                 return
-            elif ch == ord('k'):
+            elif ch == self.keymap['stop']:
                 if self.child is not None:
                     self.child.terminate()
                     self.child.wait()
-            elif ch == ord('f'):
+            elif ch == self.keymap['favourite']:
                 self.favourites.toggle(self.selected)
                 self.flat = self.root.flatten([])
                 self.move(rel=0)
@@ -381,4 +429,4 @@ class OPMLBrowser:
             self.display()
 
 if __name__ == '__main__':
-    curses.wrapper(lambda s: OPMLBrowser(s, ROOT))
+    curses.wrapper(lambda s: OPMLBrowser(s))
