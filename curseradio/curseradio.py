@@ -429,6 +429,3 @@ class OPMLBrowser:
                     self.status = ""
 
             self.display()
-
-if __name__ == '__main__':
-    curses.wrapper(lambda s: OPMLBrowser(s))

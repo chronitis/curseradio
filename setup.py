@@ -10,13 +10,17 @@ with open(os.path.join(os.path.dirname(__file__), "curseradio", "__init__.py")) 
         if line.startswith("__version__"):
             exec(line)
 
-setup(name="curseradio",
-      version=__version__,
-      description="Curses interface for browsing and playing internet radio",
-      author="Gordon Ball",
-      author_email="gordon@chronitis.net",
-      url="https://github.com/chronitis/curseradio",
-      packages=["curseradio"],
-      license="MIT",
-      requires=["lxml", "requests", "pyxdg"],
-      scripts=["scripts/curseradio"])
+setup(
+    name="curseradio",
+    version=__version__,
+    description="Curses interface for browsing and playing internet radio",
+    author="Gordon Ball",
+    author_email="gordon@chronitis.net",
+    url="https://github.com/chronitis/curseradio",
+    packages=["curseradio"],
+    license="MIT",
+    requires=["lxml", "requests", "pyxdg"],
+    entry_points={
+        'console_scripts': 'curseradio = curseradio.__main__:main'
+    }
+)
