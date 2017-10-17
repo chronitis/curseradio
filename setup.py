@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 
 from distutils.core import setup
-from curseradio import __version__
+import os
+
+__version__ = None
+
+with open(os.path.join(os.path.dirname(__file__), "curseradio", "__init__.py")) as f:
+    for line in f.readlines():
+        if line.startswith("__version__"):
+            exec(line)
 
 setup(name="curseradio",
       version=__version__,
